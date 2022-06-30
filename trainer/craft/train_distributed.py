@@ -144,24 +144,6 @@ class Trainer(object):
         total_gpu_num = torch.cuda.device_count()
 
         # MODEL -------------------------------------------------------------------------------------------------------#
-        # SUPERVISION model
-        if self.config.mode == "weak_supervision":
-            if self.config.train.backbone == "vgg":
-                supervision_model = CRAFT(pretrained=False, amp=self.config.train.amp)
-            else:
-                raise Exception("Undefined architecture")
-
-            # NOTE: only work on half GPU assign train / half GPU assign supervision setting
-            supervision_device = total_gpu_num // 2 + self.gpu
-            if self.config.train.ckpt_path is not None:
-                supervision_param = self.get_load_param(supervision_device)
-                supervision_model.load_state_dict(
-                    copyStateDict(supervision_param["craft"])
-                )
-                supervision_model = supervision_model.to(f"cuda:{supervision_device}")
-            print(f"Supervision model loading on : gpu {supervision_device}")
-        else:
-            supervision_model, supervision_device = None, None
 
         # TRAIN model
         if self.config.train.backbone == "vgg":
@@ -190,8 +172,8 @@ class Trainer(object):
             raise Exception("Undefined dataset")
 
         if self.config.mode == "weak_supervision":
-            trn_real_dataset.update_model(supervision_model)
-            trn_real_dataset.update_device(supervision_device)
+            trn_real_dataset.update_model(craft)
+            trn_real_dataset.update_device(self.gpu)
 
         trn_real_sampler = torch.utils.data.distributed.DistributedSampler(
             trn_real_dataset
@@ -409,11 +391,6 @@ class Trainer(object):
                 if train_step >= whole_training_step:
                     break
 
-            if self.config.mode == "weak_supervision":
-                state_dict = craft.module.state_dict()
-                supervision_model.load_state_dict(state_dict)
-                trn_real_dataset.update_model(supervision_model)
-
         # save last model
         if self.gpu == 0:
             save_param_dic = {
@@ -471,7 +448,7 @@ def main():
 
     if config["mode"] == "weak_supervision":
         # NOTE: half GPU assign train / half GPU assign supervision setting
-        ngpus_per_node = torch.cuda.device_count() // 2
+        ngpus_per_node = torch.cuda.device_count()
         mode = "weak_supervision"
     else:
         ngpus_per_node = torch.cuda.device_count()

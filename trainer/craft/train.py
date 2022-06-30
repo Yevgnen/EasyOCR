@@ -140,23 +140,6 @@ class Trainer(object):
         torch.cuda.set_device(self.gpu)
 
         # MODEL -------------------------------------------------------------------------------------------------------#
-        # SUPERVISION model
-        if self.config.mode == "weak_supervision":
-            if self.config.train.backbone == "vgg":
-                supervision_model = CRAFT(pretrained=False, amp=self.config.train.amp)
-            else:
-                raise Exception("Undefined architecture")
-
-            supervision_device = self.gpu
-            if self.config.train.ckpt_path is not None:
-                supervision_param = self.get_load_param(supervision_device)
-                supervision_model.load_state_dict(
-                    copyStateDict(supervision_param["craft"])
-                )
-                supervision_model = supervision_model.to(f"cuda:{supervision_device}")
-            print(f"Supervision model loading on : gpu {supervision_device}")
-        else:
-            supervision_model, supervision_device = None, None
 
         # TRAIN model
         if self.config.train.backbone == "vgg":
@@ -184,8 +167,8 @@ class Trainer(object):
             raise Exception("Undefined dataset")
 
         if self.config.mode == "weak_supervision":
-            trn_real_dataset.update_model(supervision_model)
-            trn_real_dataset.update_device(supervision_device)
+            trn_real_dataset.update_model(craft)
+            trn_real_dataset.update_device(self.gpu)
 
         trn_real_loader = torch.utils.data.DataLoader(
             trn_real_dataset,
@@ -392,11 +375,6 @@ class Trainer(object):
                 train_step += 1
                 if train_step >= whole_training_step:
                     break
-
-            if self.config.mode == "weak_supervision":
-                state_dict = craft.module.state_dict()
-                supervision_model.load_state_dict(state_dict)
-                trn_real_dataset.update_model(supervision_model)
 
         # save last model
         save_param_dic = {
